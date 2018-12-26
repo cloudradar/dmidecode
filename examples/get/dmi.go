@@ -7,8 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/troian/dmidecode"
 	"os/exec"
+
+	"github.com/troian/dmidecode"
 )
 
 func main() {
