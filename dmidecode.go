@@ -179,6 +179,11 @@ func (dmi *DMI) Get(dst interface{}) error {
 	return nil
 }
 
+// Raw return full tree of keys as map[ReqType]interface
+func (dmi *DMI) Raw() (interface{}, error) {
+	return reflect.Indirect(reflect.ValueOf(dmi.decoded)).Interface(), nil
+}
+
 func (dmi *DMI) parse(data []byte) error {
 	output := strings.Split(string(data), "\n\n")
 
