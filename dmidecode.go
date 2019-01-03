@@ -289,6 +289,11 @@ func (dmi *DMI) decode() (err error) {
 				continue
 			}
 
+			if v, ok := val.(string); ok && ((v == "Not Provided") || (v == "Not Specified") || (v == "Unknown")){
+				continue
+			}
+
+			fmt.Println(val)
 			switch fieldType.Type.Kind() {
 			case reflect.Int:
 				vl, e := strconv.Atoi(val.(string))
@@ -307,7 +312,7 @@ func (dmi *DMI) decode() (err error) {
 
 					vl = uint16(v)
 				} else {
-					v, e := strconv.ParseUint(strings.TrimPrefix(str, "0x"), 10, 16)
+					v, e := strconv.ParseUint(str, 10, 16)
 					if e != nil {
 						return fmt.Errorf("dmidecode: parse decimal: %s", e.Error())
 					}

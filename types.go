@@ -82,7 +82,7 @@ type CPUSignature struct {
 	Stepping int
 }
 
-type SizeType uint64
+type SizeType int64
 
 var _ unmarshaler = (*SimpleCSV)(nil)
 var _ unmarshaler = (*CPUSignature)(nil)
@@ -255,7 +255,7 @@ type ReqMemoryDevice struct {
 	ErrorInformationHandle string   `dmidecode:"Error Information Handle"`
 	TotalWidth             string   `dmidecode:"Total Width"`
 	DataWidth              string   `dmidecode:"Data Width"`
-	Size                   SizeType `dmidecode:"Size"`
+	Size                   SizeType `dmidecode:"Size" comment:"-1 means module not installed"`
 	FormFactor             string   `dmidecode:"Form Factor"`
 	Set                    string   `dmidecode:"Set"`
 	Locator                string   `dmidecode:"Locator"`
@@ -530,6 +530,10 @@ func (un *SimpleCSV) unmarshal(data string) error {
 }
 
 func (un *SizeType) unmarshal(data string) error {
+	if data == "No Module Installed" {
+		*un = -1
+		return nil
+	}
 	vals := sizeTypeRegex.FindStringSubmatch(data)
 	if len(vals) != 3 {
 		return errors.New("dmidecode: invalid size type")
