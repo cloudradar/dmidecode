@@ -17,6 +17,7 @@ var handleRegex *regexp.Regexp
 var inBlockRegex *regexp.Regexp
 var recordRegex *regexp.Regexp
 var recordRegex2 *regexp.Regexp
+var sizeTypeRegex *regexp.Regexp
 
 type typeDecoders map[ReqType]func() interface{}
 
@@ -71,6 +72,7 @@ func init() {
 	inBlockRegex = regexp.MustCompile(`^\t\t(.+)$`)
 	recordRegex = regexp.MustCompile(`\t(.+):\s+(.+)$`)
 	recordRegex2 = regexp.MustCompile(`\t(.+):$`)
+	sizeTypeRegex = regexp.MustCompile(`^(\d+)\s(B|MB|GB)$`)
 }
 
 type parsedRecord struct {
@@ -227,10 +229,8 @@ func (dmi *DMI) parse(data []byte) error {
 			recordData = recordRegex2.FindStringSubmatch(dataElements[i])
 
 			if len(recordData) > 0 {
-				// This is an array of data - let the loop know we are inside
-				// an array block
-				keyName := recordData[1]
 				var arrayValue []string
+				keyName := recordData[1]
 
 				for range dataElements[i+1:] {
 					inBlockData := inBlockRegex.FindStringSubmatch(dataElements[i+1])
@@ -255,10 +255,10 @@ func (dmi *DMI) parse(data []byte) error {
 	return nil
 }
 
-func (dmi *DMI) decode() error {
+func (dmi *DMI) decode() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(r)
+			err = fmt.Errorf("dmidecode: panic %s", r)
 		}
 	}()
 
@@ -296,8 +296,39 @@ func (dmi *DMI) decode() error {
 					return fmt.Errorf("dmidecode: parse string into int: %s", e.Error())
 				}
 				fieldValue.Set(reflect.ValueOf(vl))
+			case reflect.Uint16:
+				str := val.(string)
+				var vl interface{}
+				if strings.HasPrefix(str, "0x") {
+					v, e := strconv.ParseUint(strings.TrimPrefix(str, "0x"), 16, 16)
+					if e != nil {
+						return fmt.Errorf("dmidecode: parse hexdecimal: %s", e.Error())
+					}
+
+					vl = uint16(v)
+				} else {
+					v, e := strconv.ParseUint(strings.TrimPrefix(str, "0x"), 10, 16)
+					if e != nil {
+						return fmt.Errorf("dmidecode: parse decimal: %s", e.Error())
+					}
+
+					vl = uint16(v)
+				}
+
+				fieldValue.Set(reflect.ValueOf(vl))
 			case reflect.String:
-				fieldValue.SetString(val.(string))
+				// this it annoying bug of dmidecode
+				// some of string fields may come as empty thus parser treats them as array
+				switch vl := val.(type) {
+				case []string:
+					if len(vl) > 0 {
+						return fmt.Errorf("dmidecode: field expects string but value is slice")
+					}
+
+					fieldValue.SetString("")
+				case string:
+					fieldValue.SetString(vl)
+				}
 			case reflect.Slice:
 				switch fieldValue.Interface().(type) {
 				case []byte:
@@ -341,6 +372,20 @@ func (dmi *DMI) decode() error {
 					}
 
 					fieldValue.Set(reflect.ValueOf(tm))
+				case CPUSignature:
+					var sig CPUSignature
+					if e := sig.unmarshal(val.(string)); e != nil {
+						return fmt.Errorf("dmidecode: decode cpu signature: %s", e.Error())
+					}
+					fieldValue.Set(reflect.ValueOf(sig))
+				case SizeType:
+					var vl SizeType
+
+					if e := vl.unmarshal(val.(string)); e != nil {
+						return fmt.Errorf("dmidecode: decode size type: %s", e.Error())
+					}
+
+					fieldValue.Set(reflect.ValueOf(vl))
 				default:
 					fmt.Println("unknown type", fieldValue.Type().String())
 				}
@@ -404,7 +449,7 @@ func checkArg(v reflect.Value) (reqType ReqType, err error) {
 			return reqType, ErrInvalidEntityType
 		}
 
-		return obj.Type(), nil
+		return obj.ObjectType(), nil
 	}
 
 	return reqType, ErrPtrToSlice
